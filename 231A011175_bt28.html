@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game kiểm tra tốc độ</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Font chữ Google Fonts Inter */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            min-height: 100vh;
+        }
+
+        /* Tùy chỉnh Khu vực chơi (#arena) chuẩn 600px x 400px */
+        #arena {
+            width: 600px;
+            height: 400px;
+            position: relative;
+            overflow: hidden;
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(99, 102, 241, 0.1);
+        }
+
+        /* Lưới nền cho khu vực chơi thêm phong cách Cyberpunk/Modern */
+        .arena-grid {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+
+        /* Mục tiêu xuất hiện trong arena */
+        .target {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #f43f5e, #be123c);
+            box-shadow: 0 0 15px rgba(244, 63, 94, 0.8), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.1s ease-out;
+            animation: spawnPop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .target:active {
+            transform: scale(0.85);
+        }
+
+        /* Vòng tròn hiệu ứng xung quanh target */
+        .target::after {
+            content: '';
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            right: -4px;
+            bottom: -4px;
+            border-radius: 50%;
+            border: 2px dashed rgba(244, 63, 94, 0.6);
+            animation: spin 3s linear infinite;
+        }
+
+        /* Animation khi xuất hiện target */
+        @keyframes spawnPop {
+            0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Hiệu ứng nổ nhỏ khi click trúng */
+        .hit-effect {
+            position: absolute;
+            pointer-events: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 3px solid #f43f5e;
+            animation: burst 0.3s forwards ease-out;
+        }
+
+        @keyframes burst {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(2.2); opacity: 0; border-width: 0px; }
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center p-4 text-white">
+
+    <!-- Container chính chứa toàn bộ ứng dụng -->
+    <div class="flex flex-col items-center max-w-4xl w-full">
+        
+        <!-- Tiêu đề Trò chơi -->
+        <div class="text-center mb-6">
+            <h1 class="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-400 bg-clip-text text-transparent">
+                GAME KIỂM TRA TỐC ĐỘ
+            </h1>
+            <p class="text-slate-400 text-sm mt-1">Thử thách nhanh tay lẹ mắt trong 30 giây</p>
+        </div>
+
+        <!-- Bảng thông tin Score, Timer, High Score -->
+        <div class="grid grid-cols-3 gap-4 w-[600px] mb-4">
+            <!-- Điểm hiện tại -->
+            <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3 text-center shadow-lg backdrop-blur">
+                <span class="text-xs uppercase font-bold text-slate-400 tracking-wider">Điểm số</span>
+                <div id="score" class="text-3xl font-black text-emerald-400">0</div>
+            </div>
+
+            <!-- Thời gian còn lại -->
+            <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3 text-center shadow-lg backdrop-blur">
+                <span class="text-xs uppercase font-bold text-slate-400 tracking-wider">Thời gian</span>
+                <div id="timer" class="text-3xl font-black text-amber-400">30s</div>
+            </div>
+
+            <!-- Kỷ lục (Điểm cao nhất) -->
+            <div class="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3 text-center shadow-lg backdrop-blur">
+                <span class="text-xs uppercase font-bold text-slate-400 tracking-wider">Kỷ kỷ lục</span>
+                <div id="high-score" class="text-3xl font-black text-indigo-400">0</div>
+            </div>
+        </div>
+
+        <!-- Khu vực chơi game (#arena) chính 600px x 400px -->
+        <div id="arena" class="arena-grid rounded-2xl flex items-center justify-center">
+            
+            <!-- Màn hình chờ bắt đầu (Hiển thị khi chưa bấm Start) -->
+            <div id="start-overlay" class="flex flex-col items-center justify-center z-10 p-6 text-center">
+                <div class="w-16 h-16 bg-pink-500/10 text-pink-500 rounded-full flex items-center justify-center mb-4 border border-pink-500/20 animate-pulse">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                    </svg>
+                </div>
+                <h2 class="text-xl font-bold text-slate-200 mb-2">Sẵn sàng thử thách?</h2>
+                <p class="text-sm text-slate-400 mb-6 max-w-md">
+                    Nhấp vào các mục tiêu xuất hiện trên màn hình nhanh nhất có thể. Mục tiêu sẽ tự đổi vị trí mỗi <strong class="text-pink-400">1 giây</strong>!
+                </p>
+                <button id="start-btn" onclick="startGame()" class="px-8 py-3.5 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white font-bold rounded-xl shadow-lg shadow-pink-500/30 hover:shadow-pink-500/50 transform hover:-translate-y-0.5 active:translate-y-0 transition-all duration-150">
+                    Bắt đầu trò chơi
+                </button>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Modal Kết quả khi Game Over -->
+    <div id="result-modal" class="fixed inset-0 bg-black/70 backdrop-blur-md hidden flex items-center justify-center z-50 p-4 opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl transform scale-95 transition-transform duration-300" id="modal-card">
+            
+            <div class="w-16 h-16 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-500/30">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+            </div>
+
+            <h3 class="text-2xl font-black text-white mb-1">HẾT GIỜ!</h3>
+            <p class="text-slate-400 text-sm mb-4">Kết quả phản xạ của bạn</p>
+
+            <div class="bg-slate-900/60 rounded-xl p-4 mb-4 border border-slate-700/50">
+                <div class="text-xs text-slate-400 uppercase font-semibold">Tổng điểm đạt được</div>
+                <div id="final-score" class="text-5xl font-black text-pink-500 my-1">0</div>
+                <div id="performance-eval" class="text-xs font-medium text-emerald-400 mt-2">Đánh giá: Xuất sắc!</div>
+            </div>
+
+            <button onclick="closeModalAndRestart()" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 transition-all">
+                Chơi lại ngay
+            </button>
+        </div>
+    </div>
+
+    <!-- Web Audio API để phát âm thanh phản hồi nhẹ không cần tệp ngoài -->
+    <script>
+        // Tạo Audio Context cho hiệu ứng âm thanh click
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function playHitSound() {
+            try {
+                if (!audioCtx) audioCtx = new AudioContext();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                // Tần số âm thanh cao nhẹ
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.08);
+
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.08);
+            } catch (e) {
+                // Bỏ qua nếu trình duyệt chặn audio
+            }
+        }
+    </script>
+
+    <!-- Logic JavaScript chính của trò chơi -->
+    <script>
+        // --- 1. KHAI BÁO CÁC BIẾN CẤU HÌNH VÀ TRẠNG THÁI ---
+        const ARENA_WIDTH = 600;     // Chiều rộng #arena
+        const ARENA_HEIGHT = 400;    // Chiều cao #arena
+        const TARGET_SIZE = 50;      // Kích thước hình tròn mục tiêu (px)
+        const GAME_DURATION = 30;    // Thời gian chơi tính bằng giây
+        const MOVE_INTERVAL = 1000;  // Thời gian mục tiêu tự đổi vị trí (1000ms = 1s)
+
+        let score = 0;               // Điểm số hiện tại
+        let timeLeft = GAME_DURATION;// Thời gian đếm ngược còn lại
+        let highScore = 0;           // Kỷ lục điểm cao nhất
+        let gameTimer = null;        // Interval cho bộ đếm ngược 30 giây
+        let targetTimer = null;      // Timeout/Interval cho việc tự động đổi vị trí mục tiêu
+        let isPlaying = false;       // Trạng thái game đang chạy hay không
+
+        // --- 2. LẤY CÁC PHẦN TỬ DOM ---
+        const arenaEl = document.getElementById('arena');
+        const scoreEl = document.getElementById('score');
+        const timerEl = document.getElementById('timer');
+        const highScoreEl = document.getElementById('high-score');
+        const startOverlay = document.getElementById('start-overlay');
+        const resultModal = document.getElementById('result-modal');
+        const modalCard = document.getElementById('modal-card');
+        const finalScoreEl = document.getElementById('final-score');
+        const performanceEvalEl = document.getElementById('performance-eval');
+
+        // Khôi phục High Score từ localStorage nếu có
+        if (localStorage.getItem('click_game_highscore')) {
+            highScore = parseInt(localStorage.getItem('click_game_highscore'));
+            highScoreEl.textContent = highScore;
+        }
+
+        // --- 3. BẮT ĐẦU TRÒ CHƠI ---
+        function startGame() {
+            if (isPlaying) return;
+
+            // Reset dữ liệu ban đầu
+            score = 0;
+            timeLeft = GAME_DURATION;
+            isPlaying = true;
+
+            scoreEl.textContent = score;
+            timerEl.textContent = `${timeLeft}s`;
+
+            // Ẩn màn hình chờ Bắt đầu
+            startOverlay.classList.add('hidden');
+
+            // Tạo mục tiêu đầu tiên
+            spawnTarget();
+
+            // Chạy bộ đếm ngược 30 giây (Mỗi 1 giây trừ 1)
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                timerEl.textContent = `${timeLeft}s`;
+
+                // Đổi màu cảnh báo khi thời gian dưới 5s
+                if (timeLeft <= 5) {
+                    timerEl.classList.remove('text-amber-400');
+                    timerEl.classList.add('text-rose-500', 'animate-ping');
+                    setTimeout(() => timerEl.classList.remove('animate-ping'), 500);
+                } else {
+                    timerEl.classList.remove('text-rose-500');
+                    timerEl.classList.add('text-amber-400');
+                }
+
+                // Khi hết giờ
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        // --- 4. SINH MỤC TIÊU NGẪU NHIÊN IN ARENA ---
+        function spawnTarget() {
+            // Xóa mục tiêu cũ nếu có
+            removeExistingTarget();
+
+            if (!isPlaying) return;
+
+            // Tọa độ Max để mục tiêu nằm hoàn toàn bên trong #arena (không bị đè lên viền)
+            const maxX = ARENA_WIDTH - TARGET_SIZE;
+            const maxY = ARENA_HEIGHT - TARGET_SIZE;
+
+            // Tính vị trí top & left ngẫu nhiên
+            const randomLeft = Math.floor(Math.random() * maxX);
+            const randomTop = Math.floor(Math.random() * maxY);
+
+            // Tạo thẻ div đại diện mục tiêu
+            const target = document.createElement('div');
+            target.className = 'target';
+            target.id = 'active-target';
+            target.style.left = `${randomLeft}px`;
+            target.style.top = `${randomTop}px`;
+
+            // Bắt sự kiện Click trúng mục tiêu
+            target.addEventListener('mousedown', (e) => {
+                e.stopPropagation(); // Ngăn sự kiện lan ra ngoài
+                handleTargetHit(randomLeft, randomTop);
+            });
+
+            arenaEl.appendChild(target);
+
+            // Thiết lập hẹn giờ: Tự động di chuyển sau 1 giây nếu chưa được click
+            clearTimeout(targetTimer);
+            targetTimer = setTimeout(() => {
+                if (isPlaying) {
+                    spawnTarget(); // Đổi vị trí mới
+                }
+            }, MOVE_INTERVAL);
+        }
+
+        // --- 5. XỬ LÝ KHI CLICK TRÚNG MỤC TIÊU ---
+        function handleTargetHit(x, y) {
+            if (!isPlaying) return;
+
+            // 1. Tăng điểm số
+            score++;
+            scoreEl.textContent = score;
+
+            // 2. Phát âm thanh phản hồi
+            playHitSound();
+
+            // 3. Tạo hiệu ứng nổ nhỏ tại vị trí vừa click
+            createHitEffect(x, y);
+
+            // 4. Reset bộ đếm 1 giây và chuyển mục tiêu ngay sang vị trí mới
+            clearTimeout(targetTimer);
+            spawnTarget();
+        }
+
+        // Hiệu ứng nổ hình ảnh xung quanh mục tiêu khi click thành công
+        function createHitEffect(x, y) {
+            const effect = document.createElement('div');
+            effect.className = 'hit-effect';
+            effect.style.left = `${x}px`;
+            effect.style.top = `${y}px`;
+            arenaEl.appendChild(effect);
+
+            // Tự động xóa thẻ hiệu ứng sau khi animation chạy xong
+            setTimeout(() => {
+                if (effect.parentNode) effect.parentNode.removeChild(effect);
+            }, 300);
+        }
+
+        // Xóa mục tiêu đang có trong arena
+        function removeExistingTarget() {
+            const currentTarget = document.getElementById('active-target');
+            if (currentTarget) {
+                currentTarget.remove();
+            }
+        }
+
+        // --- 6. KẾT THÚC TRÒ CHƠI ---
+        function endGame() {
+            isPlaying = false;
+
+            // Dừng toàn bộ bộ đếm thời gian
+            clearInterval(gameTimer);
+            clearTimeout(targetTimer);
+
+            // Xóa mục tiêu khỏi khung chơi
+            removeExistingTarget();
+
+            // Cập nhật điểm cao nhất nếu vượt kỷ lục
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('click_game_highscore', highScore);
+                highScoreEl.textContent = highScore;
+            }
+
+            // Hiển thị kết quả trong Modal Popup
+            finalScoreEl.textContent = score;
+            
+            // Đánh giá hiệu suất chơi dựa trên điểm
+            if (score >= 35) {
+                performanceEvalEl.textContent = "Đánh giá: Thần đồng phản xạ! (Xuất sắc)";
+                performanceEvalEl.className = "text-xs font-bold text-emerald-400 mt-2";
+            } else if (score >= 25) {
+                performanceEvalEl.textContent = "Đánh giá: Tốc độ rất tốt! (Khá)";
+                performanceEvalEl.className = "text-xs font-bold text-blue-400 mt-2";
+            } else if (score >= 15) {
+                performanceEvalEl.textContent = "Đánh giá: Phản xạ Trung bình!";
+                performanceEvalEl.className = "text-xs font-bold text-amber-400 mt-2";
+            } else {
+                performanceEvalEl.textContent = "Đánh giá: Cần luyện tập thêm!";
+                performanceEvalEl.className = "text-xs font-bold text-rose-400 mt-2";
+            }
+
+            // Hiện Modal với hiệu ứng Fade In nhẹ
+            resultModal.classList.remove('hidden');
+            setTimeout(() => {
+                resultModal.classList.remove('opacity-0');
+                modalCard.classList.remove('scale-95');
+                modalCard.classList.add('scale-100');
+            }, 10);
+        }
+
+        // Đóng Modal kết quả & chuẩn bị chơi lại
+        function closeModalAndRestart() {
+            resultModal.classList.add('opacity-0');
+            modalCard.classList.remove('scale-100');
+            modalCard.classList.add('scale-95');
+
+            setTimeout(() => {
+                resultModal.classList.add('hidden');
+                // Chạy lại game lập tức
+                startGame();
+            }, 200);
+        }
+    </script>
+</body>
+</html>
